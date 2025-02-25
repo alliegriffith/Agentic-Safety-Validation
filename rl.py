@@ -33,7 +33,7 @@ config = {
 env.unwrapped.configure(config) 
 
 ## rollout function - take in (environment, policy, numSteps) return reward of that trajectory
-def rollout(env, policy, numSteps):
+def rollout(env, model, numSteps):
     totalReward = 0
     obs, _ = env.reset()
     initialState = obs
@@ -51,6 +51,7 @@ def rollout(env, policy, numSteps):
         if done:
             break
     return totalReward, initialState, pos
+
 
 ## episode function - run multiple rollouts
 def episode(env, policy, numSteps, numT):
@@ -124,17 +125,19 @@ def showTrajectoryInfo(numT, rewards, initStates, positions):
         #     print(xy)
             
             
-## main
-# import DQN model trained using stable baselines - this is our "policy"
-model = DQN.load("dqn_highway_roundabout")
-numT = 10
-numSteps = 100
 
-# run 5 trajectories, each for 10 timesteps
-rewards, initStates, positions = episode(env, model, numSteps, numT)
+if __name__=="main":
+    ## main
+    # import DQN model trained using stable baselines - this is our "policy"
+    model = DQN.load("dqn_highway_roundabout")
+    numT = 10
+    numSteps = 100
 
-# show each trajectory info 
-showTrajectoryInfo(numT, rewards, initStates, positions)
+    # run 5 trajectories, each for 10 timesteps
+    rewards, initStates, positions = episode(env, model, numSteps, numT)
+
+    # show each trajectory info 
+    showTrajectoryInfo(numT, rewards, initStates, positions)
 # create scatter plot of x,y positions of ego car trajectories
 #plotXvT(positions, numT)
 
