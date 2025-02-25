@@ -4,6 +4,8 @@ import highway_env
 from stable_baselines3 import DQN
 import matplotlib.pyplot as plt
 import os
+import numpy as np
+import scipy.stats as stats
 
 # Load the environment
 env = gym.make("roundabout-v0", render_mode="rgb_array")
@@ -33,15 +35,22 @@ config = {
 env.unwrapped.configure(config) 
 
 ## rollout function - take in (environment, policy, numSteps) return reward of that trajectory
-def rollout(env, model, numSteps):
+def rollout(env, policy, numSteps, ego, car1, car2, car3, car4):
     totalReward = 0
     obs, _ = env.reset()
     initialState = obs
     pos = []
-    for _ in range(numSteps):
+    for i in range(numSteps):
         # get action from trained model, make deterministic
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, _ = env.step(action)
+        # add observations for ith timestep 
+        # if there are 
+        ego[i].append(obs[0][0])
+        car1[i].append(obs[1][0])
+        car2[i].append(obs[2][0])
+        car3[i].append(obs[3][0])
+        car4[i].append(obs[4][0])
         egoObs = obs[0]
         egoPosition = (egoObs[0], egoObs[1])
         pos.append(egoPosition)
@@ -58,12 +67,18 @@ def episode(env, policy, numSteps, numT):
     rewards = []
     initStates = []
     positions = [] # list of list of (x,y) tuples
+    # the following will be lists of x (float values) for each car: [numTimesteps, numTrajectories]
+    ego = [[] for _ in range(numSteps)]
+    car1 = [[] for _ in range(numSteps)]
+    car2 = [[] for _ in range(numSteps)]
+    car3 = [[] for _ in range(numSteps)]
+    car4 = [[] for _ in range(numSteps)]
     for _ in range(numT):
-        totalReward, initialState, posTrajectory = rollout(env, policy, numSteps)
+        totalReward, initialState, posTrajectory = rollout(env, policy, numSteps, ego, car1, car2, car3, car4)
         rewards.append(totalReward)
         initStates.append(initialState)
         positions.append(posTrajectory)
-    return rewards, initStates, positions
+    return rewards, initStates, positions, ego, car1, car2, car3, car4
 
 def plotXvT(positions, numT):
     save_path = r"C:\Users\Allie Griffith\Downloads\CS238V\finalProj\plots"
@@ -110,37 +125,72 @@ def plotXvY(positions, numT):
     plt.savefig(plot_file)
     plt.close()
 
-def showTrajectoryInfo(numT, rewards, initStates, positions):
+def showTrajectoryInfo(numT, rewards, initStates, positions, ego, car1, car2, car3, car4):
     for i in range(numT):
         print(f"for the {i}th trajectory:")
-        print("reward", rewards[i])
+        # print("reward", rewards[i])
         print("initState", initStates[i])
-        # print("(x,y) positions of ego car")
-        # for z in range(len(positions[i])):
-        #     #(x,y) position tuple
-        #     xyTuple = positions[i][z]
-        #     # scale and switch y signs to align with how we want to view coords 
-        #     xy= ((xyTuple[0]* 100), (-xyTuple[1] * 10))
-        #     #positions[i][z] = xyTuple
-        #     print(xy)
-            
-            
+        
+        print("(x,y) positions of ego car")
+        for z in range(len(positions[i])):
+            #(x,y) position tuple
+            xyTuple = positions[i][z]
+            # # scale and switch y signs to align with how we want to view coords 
+            # xy= ((xyTuple[0]* 100), (-xyTuple[1] * 10))
+            #positions[i][z] = xyTuple
+            print(xyTuple)
+ 
+# function to turn matrix of car info into a series of nominal distributions (1/timestep)                      
+def nomT(matrix):
+    for i, row in enumerate(matrix):
+        row = np.array(row)
+        mu, sigma = np.mean(row), np.std(row)
+        
+        # Create a range of x values for the fitted normal distribution
+        x = np.linspace(min(row), max(row), 100)
+        pdf = stats.norm.pdf(x, mu, sigma)  # Normal distribution PDF
 
-if __name__=="main":
-    ## main
+        # Create the "plots" directory if it doesn't exist
+        save_path = r"C:\Users\Allie Griffith\Downloads\CS238V\finalProj\plots"
+
+        # Plot the histogram and the fitted normal curve
+        plt.figure(figsize=(8, 5))
+        plt.hist(row, bins=30, density=True, alpha=0.6, color='b', label="Histogram of Data")
+        plt.plot(x, pdf, 'r', linewidth=2, label="Fitted Normal Distribution")
+
+        # Labels and title
+        plt.xlabel("Value")
+        plt.ylabel("Density")
+        plt.title(f"Fitted Normal Distribution: μ={mu:.2f}, σ={sigma:.2f}")
+        plt.legend()
+
+        # Save the plot as an image file
+        plot_filename = f"{save_path}/ego_nom_taj_distribution_{i}.png"
+        plt.savefig(plot_filename, dpi=300)
+        plt.close()  # Close the plot to free memory
+    
+## main
+if __name__ == "__main__":
+
     # import DQN model trained using stable baselines - this is our "policy"
     model = DQN.load("dqn_highway_roundabout")
-    numT = 10
-    numSteps = 100
+    numT = 1000
+    numSteps = 80
 
     # run 5 trajectories, each for 10 timesteps
-    rewards, initStates, positions = episode(env, model, numSteps, numT)
+    rewards, initStates, positions, ego, car1, car2, car3, car4 = episode(env, model, numSteps, numT)
 
-    # show each trajectory info 
-    showTrajectoryInfo(numT, rewards, initStates, positions)
-# create scatter plot of x,y positions of ego car trajectories
-#plotXvT(positions, numT)
+    # turn data into nominal trajectory distributions
+    nomT(ego)
+    # for i in range(numSteps):
+    #     print(f"{i}th step:")
+    #     ego[i]
+    #     car1[i]
+    # # show each trajectory info 
+    # showTrajectoryInfo(numT, rewards, initStates, positions, ego, car1, car2, car3, car4)
+    # # create scatter plot of x,y positions of ego car trajectories
+    # #plotXvT(positions, numT)
 
-# print(f"Lanes Count: {env.unwrapped.config.get('lanes_count', 'Not Found')}")
-# print(f"Vehicles Count: {env.unwrapped.config.get('vehicles_count', 'Not Found')}")
-# print("Full Config:", env.unwrapped.config)
+    # print(f"Lanes Count: {env.unwrapped.config.get('lanes_count', 'Not Found')}")
+    # print(f"Vehicles Count: {env.unwrapped.config.get('vehicles_count', 'Not Found')}")
+    # print("Full Config:", env.unwrapped.config)
